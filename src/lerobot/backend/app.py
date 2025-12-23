@@ -9,8 +9,8 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, UploadFile
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from .database import engine, Base, get_db, AsyncSessionLocal
-from .models import TeleopSession, TeleopFrame, VideoChunk
+from .database import engine, get_db, AsyncSessionLocal
+from .models import Base, TeleopSession, TeleopFrame, VideoChunk
 from contextlib import asynccontextmanager
 
 # 파일 저장 경로 (환경변수로 오버라이드 가능)
