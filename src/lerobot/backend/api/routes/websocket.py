@@ -10,10 +10,12 @@ import datetime
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from ...core.config import settings
+from ...core.logging import get_logger
 from ...database import AsyncSessionLocal
 from ...models import TeleopSession, TeleopFrame
 from ...services.connection import manager
 
+logger = get_logger(__name__)
 router = APIRouter(tags=["WebSocket"])
 
 
@@ -35,6 +37,7 @@ async def websocket_endpoint(websocket: WebSocket, robot_id: str):
         - 연결 종료: 남은 버퍼 저장 후 정리
     """
     await manager.connect(websocket)
+    logger.info("WebSocket 연결됨", robot_id=robot_id)
 
     # 이 연결을 위한 새로운 세션 생성
     session_db = AsyncSessionLocal()
@@ -43,8 +46,10 @@ async def websocket_endpoint(websocket: WebSocket, robot_id: str):
     await session_db.commit()
     await session_db.refresh(new_session)
     session_id = new_session.id
+    logger.info("텔레오퍼레이션 세션 생성", session_id=session_id, robot_id=robot_id)
 
     buffer = []
+    total_frames = 0
 
     try:
         while True:
@@ -66,7 +71,9 @@ async def websocket_endpoint(websocket: WebSocket, robot_id: str):
             if len(buffer) >= settings.WS_BUFFER_SIZE:
                 session_db.add_all(buffer)
                 await session_db.commit()
+                total_frames += len(buffer)
                 buffer.clear()
+                logger.debug("프레임 배치 저장", session_id=session_id, total_frames=total_frames)
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
@@ -74,7 +81,9 @@ async def websocket_endpoint(websocket: WebSocket, robot_id: str):
         if buffer:
             session_db.add_all(buffer)
             await session_db.commit()
+            total_frames += len(buffer)
+        logger.info("WebSocket 연결 종료", robot_id=robot_id, session_id=session_id, total_frames=total_frames)
     except Exception as e:
-        print(f"WebSocket Error: {e}")
+        logger.error("WebSocket 오류", robot_id=robot_id, session_id=session_id, error=str(e), exc_info=True)
     finally:
         await session_db.close()
