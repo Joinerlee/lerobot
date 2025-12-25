@@ -1,0 +1,134 @@
+# LeRobot Teleoperation - Full Stack with Nginx
+# Usage: docker compose -f docker-compose.full.yml up -d
+
+version: "3.8"
+
+services:
+  # ============================================
+  # Nginx Reverse Proxy
+  # ============================================
+  nginx:
+    image: nginx:alpine
+    container_name: lerobot-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx-proxy.conf:/etc/nginx/conf.d/proxy.conf:ro
+      # Uncomment for SSL
+      # - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - backend
+    networks:
+      - lerobot-network
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================
+  # Backend API Server
+  # ============================================
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: lerobot-backend
+    restart: unless-stopped
+    expose:
+      - "8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME:-}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_REGION=${AWS_REGION:-ap-northeast-2}
+    volumes:
+      - backend_data:/app/data
+      - backend_logs:/app/logs
+      - lerobot_backup:/app/lerobot_backup
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - lerobot-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ============================================
+  # PostgreSQL Database
+  # ============================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: lerobot-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-lerobot}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-lerobot_secret}
+      - POSTGRES_DB=${POSTGRES_DB:-lerobot}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    networks:
+      - lerobot-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lerobot} -d ${POSTGRES_DB:-lerobot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ============================================
+  # Redis Cache
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: lerobot-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - lerobot-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  lerobot-network:
+    driver: bridge
+    name: lerobot-network
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  postgres_data:
+    name: lerobot-postgres-data
+  redis_data:
+    name: lerobot-redis-data
+  backend_data:
+    name: lerobot-backend-data
+  backend_logs:
+    name: lerobot-backend-logs
+  lerobot_backup:
+    name: lerobot-backup
