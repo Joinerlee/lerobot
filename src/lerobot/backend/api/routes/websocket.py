@@ -14,6 +14,7 @@ from ...core.logging import get_logger
 from ...database import AsyncSessionLocal
 from ...models import TeleopSession, TeleopFrame
 from ...services.connection import manager
+from ..dependencies import verify_ws_api_key
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["WebSocket"])
@@ -35,7 +36,17 @@ async def websocket_endpoint(websocket: WebSocket, robot_id: str):
         - 데이터 수신: JSON 형식의 프레임 데이터
         - 버퍼: WS_BUFFER_SIZE(기본 60)개마다 배치 INSERT
         - 연결 종료: 남은 버퍼 저장 후 정리
+
+    Authentication:
+        - API_KEY 환경변수 설정 시 인증 필요
+        - X-API-Key 헤더 또는 ?api_key= 쿼리 파라미터
     """
+    # API Key 인증 (설정된 경우)
+    try:
+        await verify_ws_api_key(websocket)
+    except Exception:
+        return  # 연결 이미 종료됨
+
     await manager.connect(websocket)
     logger.info("WebSocket 연결됨", robot_id=robot_id)
 

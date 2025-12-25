@@ -14,13 +14,14 @@ Usage:
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 
 from .core.config import settings
 from .core.logging import setup_logging, get_logger
 from .database import engine
 from .models import Base
+from .api.dependencies import verify_api_key
 from .api.middleware import (
     RequestIdMiddleware,
     RequestLoggingMiddleware,
@@ -95,11 +96,15 @@ app.add_exception_handler(Exception, http_exception_handler)
 # Router Registration
 # =============================================================================
 
+# 인증 불필요 (헬스체크)
 app.include_router(health_router)
-app.include_router(robots_router)
-app.include_router(sessions_router)
-app.include_router(upload_router)
-app.include_router(websocket_router)
+
+# 인증 필요 (API_KEY 환경변수 설정 시)
+auth_dependency = [Depends(verify_api_key)]
+app.include_router(robots_router, dependencies=auth_dependency)
+app.include_router(sessions_router, dependencies=auth_dependency)
+app.include_router(upload_router, dependencies=auth_dependency)
+app.include_router(websocket_router)  # WebSocket은 별도 처리
 
 
 # =============================================================================
