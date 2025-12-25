@@ -22,8 +22,4 @@ AsyncSessionLocal = sessionmaker(
     expire_on_commit=False,
 )
 
-
-async def get_db():
-    """비동기 DB 세션 생성기 (FastAPI Depends용)."""
-    async with AsyncSessionLocal() as session:
-        yield session
+# get_db는 api/dependencies.py로 이동됨
