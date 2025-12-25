@@ -47,6 +47,13 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: Optional[str] = None
     AWS_REGION: str = "ap-northeast-2"
     S3_BUCKET_NAME: str = "lerobot-teleoperation-data"
+    S3_ENDPOINT_URL: Optional[str] = None  # MinIO, LocalStack 등 커스텀 엔드포인트
+    S3_MULTIPART_THRESHOLD: int = 8 * 1024 * 1024  # 8MB 이상 시 멀티파트
+    S3_MULTIPART_CHUNK_SIZE: int = 8 * 1024 * 1024  # 멀티파트 청크 크기
+
+    # 허용 비디오 확장자 및 최대 크기
+    VIDEO_ALLOWED_EXTENSIONS: list[str] = ["mp4", "avi", "mov", "webm"]
+    VIDEO_MAX_SIZE_MB: int = 500  # 최대 500MB
 
     # ==========================================================================
     # File Storage
