@@ -1,9 +1,7 @@
 import asyncio
 import json
 import datetime
-import os
 import aiofiles
-from pathlib import Path
 from typing import Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
@@ -11,10 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from .database import engine, get_db, AsyncSessionLocal
 from .models import Base, TeleopSession, TeleopFrame, VideoChunk
+from .core.config import settings
 from contextlib import asynccontextmanager
-
-# 파일 저장 경로 (환경변수로 오버라이드 가능)
-BACKUP_DIR = Path(os.getenv("LEROBOT_BACKUP_DIR", "./lerobot_backup"))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -22,19 +18,15 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     # Ensure backup directory exists
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    settings.backup_path.mkdir(parents=True, exist_ok=True)
     yield
 
 app = FastAPI(
-    title="LeRobot Backend",
+    title=settings.APP_NAME,
     description="Teleoperation data collection and dataset management API",
-    version="0.1.0",
+    version=settings.APP_VERSION,
     lifespan=lifespan
-)
-
-# 성능 최적화: 버퍼링 설정
-# 60프레임(약 1초)마다 DB에 한 번에 씁니다. (DB 부하 감소)
-BUFFER_SIZE = 60 
+) 
 
 class ConnectionManager:
     def __init__(self):
@@ -78,7 +70,7 @@ async def websocket_endpoint(websocket: WebSocket, robot_id: str):
             buffer.append(frame_entry)
             
             # 비동기 배치 처리 (Buffer가 차면 DB에 저장)
-            if len(buffer) >= BUFFER_SIZE:
+            if len(buffer) >= settings.WS_BUFFER_SIZE:
                 session_db.add_all(buffer)
                 await session_db.commit()
                 buffer.clear()
@@ -108,7 +100,7 @@ async def upload_sync(
     """
     try:
         # 저장 경로 생성
-        save_path = BACKUP_DIR / dataset_name / relative_path
+        save_path = settings.backup_path / dataset_name / relative_path
         save_path.parent.mkdir(parents=True, exist_ok=True)
 
         # 비동기로 파일 저장
@@ -136,7 +128,7 @@ async def upload_video(
     try:
         # 저장 경로 생성
         filename = f"{session_id}_{camera_key}_{int(start_timestamp)}.mp4"
-        save_path = BACKUP_DIR / "videos" / filename
+        save_path = settings.backup_path / "videos" / filename
         save_path.parent.mkdir(parents=True, exist_ok=True)
 
         # 파일 저장
